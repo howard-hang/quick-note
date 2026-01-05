@@ -1,0 +1,85 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+  <id>com.quicknote.plugin</id>
+  <name>Quick Note</name>
+  <vendor email="zhanghang2357@gmail.com" >Quick Note Team</vendor>
+
+  <description><![CDATA[
+        Quick Note adds a dedicated tool window for capturing notes and code snippets while you code.
+        <ul>
+          <li>Create notes and snippets from editor context menus</li>
+          <li>Store notes as Markdown with YAML front matter</li>
+          <li>Search by text, tags, and file paths</li>
+          <li>Browse notes per project and filter by file</li>
+        </ul>
+    ]]></description>
+
+  <depends>com.intellij.modules.platform</depends>
+
+  <!-- Extensions -->
+  <extensions defaultExtensionNs="com.intellij">
+    <!-- Tool Window -->
+    <toolWindow
+            id="Quick Notes"
+            anchor="right"
+            factoryClass="com.quicknote.plugin.ui.toolwindow.QuickNoteToolWindowFactory"/>
+
+    <!-- Application Services -->
+    <applicationService
+            serviceImplementation="com.quicknote.plugin.service.FileService"/>
+    <applicationService
+            serviceImplementation="com.quicknote.plugin.repository.NoteRepository"/>
+    <applicationService
+            serviceImplementation="com.quicknote.plugin.settings.QuickNoteSettings"/>
+
+    <!-- Project Services -->
+    <projectService
+            serviceImplementation="com.quicknote.plugin.service.NoteService"/>
+    <projectService
+            serviceImplementation="com.quicknote.plugin.service.SearchService"/>
+  </extensions>
+
+  <!-- Actions -->
+  <actions>
+    <!-- Editor Context Menu Actions -->
+    <action
+            id="com.quicknote.plugin.AddQuickNote"
+            class="com.quicknote.plugin.action.AddQuickNoteAction"
+            text="Add Quick Note"
+            icon="icons/quickNote.svg"
+            description="Add a quick note for this file">
+      <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+      <keyboard-shortcut keymap="$default" first-keystroke="ctrl q"/>
+    </action>
+
+    <action
+            id="com.quicknote.plugin.AddQuickSnippet"
+            class="com.quicknote.plugin.action.AddQuickSnippetAction"
+            text="Add Quick Snippet"
+            icon="icons/quickNote.svg"
+            description="Add a code snippet note">
+      <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+      <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift q"/>
+    </action>
+
+    <action
+            id="com.quicknote.plugin.AddQuickNoteOrSnippet"
+            class="com.quicknote.plugin.action.AddQuickNoteOrSnippetAction"
+            text="Add Quick Note/Snippet"
+            description="Add a quick note or snippet depending on selection">
+      <keyboard-shortcut keymap="$default" first-keystroke="ctrl Q"/>
+    </action>
+
+    <action
+            id="com.quicknote.plugin.ShowNotesForFile"
+            class="com.quicknote.plugin.action.ShowNotesForFileAction"
+            text="Show Notes for File"
+            icon="icons/list.svg"
+            description="Show notes for this file">
+      <add-to-group
+              group-id="EditorPopupMenu"
+              anchor="after"
+              relative-to-action="com.quicknote.plugin.AddQuickNote"/>
+    </action>
+  </actions>
+</idea-plugin>
