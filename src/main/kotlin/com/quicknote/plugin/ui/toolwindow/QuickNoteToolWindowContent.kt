@@ -347,11 +347,15 @@ class QuickNoteToolWindowContent(private val project: Project) : Disposable {
         } else {
             NoteService.getInstance(project).findNotesByFilePath(filePathFilter!!)
         }
+        thisLogger().debug(
+            "Loaded ${notes.size} notes (filePathFilter=${filePathFilter ?: "none"})"
+        )
         updateNoteList(notes)
     }
 
     fun showNotesForFile(filePath: String) {
         filePathFilter = filePath
+        thisLogger().debug("Filtering notes for file: $filePath")
         updateSearchPlaceholder()
         searchField.text = ""
         loadNotesForCurrentFilter()
@@ -486,6 +490,7 @@ class QuickNoteToolWindowContent(private val project: Project) : Disposable {
             }
             FileEditorManager.getInstance(project).openTextEditor(descriptor, true)
         } else {
+            thisLogger().warn("Failed to open note file. path=$absolutePath exists=${virtualFile?.exists() == true}")
             Messages.showErrorDialog(
                 project,
                 "File not found: ${note.filePath}",

@@ -115,6 +115,7 @@ class NoteRepository {
         val noteDir = getNoteDirectory(projectName)
 
         if (!noteDir.exists() || !noteDir.isDirectory()) {
+            thisLogger().debug("Note directory not found or not a directory: $noteDir")
             return emptyList()
         }
 
@@ -223,7 +224,7 @@ class NoteRepository {
                 .filter { it.isNotBlank() }
 
             if (parts.size < 2) {
-                thisLogger().warn("Invalid note format: $filePath")
+                thisLogger().warn("Invalid note format (missing front matter): $filePath")
                 return null
             }
 
@@ -232,6 +233,9 @@ class NoteRepository {
 
             // Parse YAML
             val frontMatter = yaml.load<Map<String, Any>>(frontMatterYaml)
+            if (frontMatter.isNullOrEmpty()) {
+                thisLogger().warn("Empty front matter in note: $filePath")
+            }
 
             // Parse metadata
             val metadataMap = frontMatter[NoteConstants.YAML_FIELD_METADATA] as? Map<String, Any>
