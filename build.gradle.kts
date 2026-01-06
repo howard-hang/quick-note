@@ -7,6 +7,7 @@ import java.io.File
 plugins {
   id("java") // Java support
   alias(libs.plugins.kotlin) // Kotlin support
+  kotlin("plugin.serialization") version "1.9.22" // Kotlin Serialization
   alias(libs.plugins.intelliJPlatform) // IntelliJ Platform Gradle Plugin
   alias(libs.plugins.changelog) // Gradle Changelog Plugin
   alias(libs.plugins.qodana) // Gradle Qodana Plugin
@@ -65,6 +66,12 @@ dependencies {
   implementation("org.apache.lucene:lucene-queryparser:9.11.1") {
     exclude(group = "org.apache.lucene", module = "lucene-core")
   }
+
+  // Mock API Server Dependencies
+  // JDK HttpServer (no external server dependency)
+
+  // Kotlin serialization for JSON
+  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
 
   // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
   intellijPlatform {

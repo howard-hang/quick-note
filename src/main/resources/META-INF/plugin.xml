@@ -18,11 +18,17 @@
 
   <!-- Extensions -->
   <extensions defaultExtensionNs="com.intellij">
-    <!-- Tool Window -->
+    <!-- Tool Windows -->
     <toolWindow
             id="Quick Notes"
             anchor="right"
             factoryClass="com.quicknote.plugin.ui.toolwindow.QuickNoteToolWindowFactory"/>
+
+    <toolWindow
+            id="Mock API"
+            anchor="bottom"
+            icon="icons/mockApi.svg"
+            factoryClass="com.quicknote.plugin.mockapi.ui.toolwindow.MockApiToolWindowFactory"/>
 
     <!-- Application Services -->
     <applicationService
@@ -32,11 +38,21 @@
     <applicationService
             serviceImplementation="com.quicknote.plugin.settings.QuickNoteSettings"/>
 
+    <!-- Mock API Application Services -->
+    <applicationService
+            serviceImplementation="com.quicknote.plugin.mockapi.repository.MockApiRepository"/>
+    <applicationService
+            serviceImplementation="com.quicknote.plugin.mockapi.server.EmbeddedHttpServer"/>
+
     <!-- Project Services -->
     <projectService
             serviceImplementation="com.quicknote.plugin.service.NoteService"/>
     <projectService
             serviceImplementation="com.quicknote.plugin.service.SearchService"/>
+
+    <!-- Mock API Project Services -->
+    <projectService
+            serviceImplementation="com.quicknote.plugin.mockapi.service.MockApiService"/>
   </extensions>
 
   <!-- Actions -->

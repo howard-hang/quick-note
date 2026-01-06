@@ -1,8 +1,8 @@
 # Changelog
 
 ## [Unreleased]
-### Added
-- Placeholder for upcoming changes.
+### Changed
+- Replace the embedded Mock API server with JDK HttpServer to improve IDE compatibility.
 
 ## [0.1.3]
 ### Added

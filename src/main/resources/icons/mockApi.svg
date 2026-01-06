@@ -1,0 +1,18 @@
+<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" width="16" height="16">
+  <!-- Server/API icon -->
+  <rect x="2" y="2" width="12" height="3" rx="0.5" fill="#59A869" opacity="0.9"/>
+  <circle cx="3.5" cy="3.5" r="0.4" fill="#ffffff"/>
+  <circle cx="5" cy="3.5" r="0.4" fill="#ffffff"/>
+
+  <rect x="2" y="6.5" width="12" height="3" rx="0.5" fill="#59A869" opacity="0.9"/>
+  <circle cx="3.5" cy="8" r="0.4" fill="#ffffff"/>
+  <circle cx="5" cy="8" r="0.4" fill="#ffffff"/>
+
+  <rect x="2" y="11" width="12" height="3" rx="0.5" fill="#59A869" opacity="0.9"/>
+  <circle cx="3.5" cy="12.5" r="0.4" fill="#ffffff"/>
+  <circle cx="5" cy="12.5" r="0.4" fill="#ffffff"/>
+
+  <!-- API indicator -->
+  <circle cx="12" cy="3.5" r="1.2" fill="#61AFFE"/>
+  <text x="12" y="4.2" text-anchor="middle" font-size="1.5" font-weight="bold" fill="#ffffff">A</text>
+</svg>
