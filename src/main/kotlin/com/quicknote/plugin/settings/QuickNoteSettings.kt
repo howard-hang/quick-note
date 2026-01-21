@@ -5,6 +5,7 @@ import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
+import com.quicknote.plugin.model.LogcatConstants
 import com.quicknote.plugin.model.NoteConstants
 import java.nio.file.Paths
 
@@ -24,6 +25,7 @@ class QuickNoteSettings : PersistentStateComponent<QuickNoteSettings.State> {
      */
     data class State(
         var storageBasePath: String = getDefaultStoragePath(),
+        var logcatStoragePath: String = getDefaultLogcatStoragePath(),
         var useProjectBasedOrganization: Boolean = true,
         var createBackupOnSave: Boolean = false,
         var enableFullTextSearch: Boolean = true,
@@ -53,6 +55,14 @@ class QuickNoteSettings : PersistentStateComponent<QuickNoteSettings.State> {
             val userHome = System.getProperty("user.home")
             return Paths.get(userHome, NoteConstants.DEFAULT_STORAGE_DIR_NAME).toString()
         }
+
+        /**
+         * Get default logcat storage path in user's home directory
+         */
+        private fun getDefaultLogcatStoragePath(): String {
+            val userHome = System.getProperty("user.home")
+            return Paths.get(userHome, LogcatConstants.DEFAULT_LOG_DIR_NAME).toString()
+        }
     }
 
     override fun getState(): State = state
@@ -66,6 +76,12 @@ class QuickNoteSettings : PersistentStateComponent<QuickNoteSettings.State> {
         get() = state.storageBasePath
         set(value) {
             state.storageBasePath = value
+        }
+
+    var logcatStoragePath: String
+        get() = state.logcatStoragePath
+        set(value) {
+            state.logcatStoragePath = value
         }
 
     var useProjectBasedOrganization: Boolean

@@ -30,6 +30,7 @@
             icon="icons/mockApi.svg"
             factoryClass="com.quicknote.plugin.mockapi.ui.toolwindow.MockApiToolWindowFactory"/>
 
+
     <!-- Application Services -->
     <applicationService
             serviceImplementation="com.quicknote.plugin.service.FileService"/>
@@ -49,6 +50,8 @@
             serviceImplementation="com.quicknote.plugin.service.NoteService"/>
     <projectService
             serviceImplementation="com.quicknote.plugin.service.SearchService"/>
+    <projectService
+            serviceImplementation="com.quicknote.plugin.service.LogcatRecorderService"/>
 
     <!-- Mock API Project Services -->
     <projectService

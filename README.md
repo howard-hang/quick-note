@@ -4,6 +4,7 @@
 Quick Note is a JetBrains IDE plugin for fast note capture and a built-in Mock API server (JDK HttpServer).
 It supports Markdown notes with YAML front matter, full-text search, tagging, and a Postman-style UI
 for managing mock endpoints and serving responses locally.
+It also includes a Logcat recorder tool window to capture Android adb logcat logs with one-click controls.
 <!-- Plugin description end -->
 
 Quick Note 是一个功能强大的 IntelliJ 平台插件，提供便捷的笔记管理和 Mock API 服务功能。
@@ -16,6 +17,19 @@ Quick Note 是一个功能强大的 IntelliJ 平台插件，提供便捷的笔�
 - 全文搜索（基于 Apache Lucene）
 - 标签管理和文件关联
 - 笔记列表浏览和过滤
+
+### 📱 Logcat 日志记录（新功能）
+用于在 IDE 内一键记录 Android `adb logcat` 日志，便于问题定位和回溯。
+
+**位置**：位于 Mock API 工具窗口左侧 Logcat 面板。
+
+**核心功能**：
+- ✅ 一键开始/停止记录 Logcat（单按钮切换）
+- ✅ 默认保存到用户目录 `quick-log/`
+- ✅ 支持自定义日志保存目录
+- ✅ 文件命名包含项目名、分支名、时间戳
+- ✅ 一键打开日志所在文件夹
+- ✅ 双击最近日志文件在文件管理器中打开
 
 ### 🌐 Mock API Server（新功能）
 一个完整的网络接口模拟工具，用于在后端接口未准备好时提供模拟数据。
@@ -137,6 +151,9 @@ curl -X POST http://localhost:8888/api/users \
         ├── endpoints.json  # 端点配置
         ├── config.json     # 服务器配置
         └── images/         # 图片资源
+
+~/quick-log/
+└── <ProjectName>-<Branch>-<Timestamp>.log
 ```
 
 ## 开发文档

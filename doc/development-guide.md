@@ -872,3 +872,15 @@ curl http://localhost:8888/images/avatar.png --output avatar.png
 
 - GitHub Issues: https://github.com/your-repo/quick-note/issues
 - Email: zhanghang2357@gmail.com
+
+# Logcat Recorder - 开发文档
+
+日志记录功能的详细设计与实现说明请参考：`doc/logcat-recorder.md`。
+
+**概要**：
+- UI 位置：Mock API 工具窗口左侧 Logcat 面板
+- Service：`LogcatRecorderService` (Project 级)
+- 设置项：`QuickNoteSettings.logcatStoragePath`
+- 默认路径：`~/quick-log/`
+- 命名规范：`<Project>-<Branch>-<Timestamp>.log`
+

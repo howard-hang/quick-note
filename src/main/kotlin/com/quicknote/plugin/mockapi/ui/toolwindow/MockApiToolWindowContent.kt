@@ -20,6 +20,7 @@ import com.quicknote.plugin.mockapi.ui.dialog.AddEditEndpointDialog
 import com.quicknote.plugin.mockapi.ui.dialog.MockApiSettingsDialog
 import com.quicknote.plugin.mockapi.ui.dialog.NetworkAddressDialog
 import com.quicknote.plugin.mockapi.ui.renderer.EndpointListCellRenderer
+import com.quicknote.plugin.ui.toolwindow.LogcatPanel
 import java.awt.*
 import java.awt.datatransfer.StringSelection
 import javax.swing.*
@@ -48,6 +49,7 @@ class MockApiToolWindowContent(private val project: Project) : Disposable {
     private val requestHistoryTableModel = RequestHistoryTableModel()
     private val requestHistoryTable = JBTable(requestHistoryTableModel)
     private val clearHistoryButton = JButton("Clear", AllIcons.Actions.GC)
+    private val logcatPanel = LogcatPanel(project)
 
     // Detail panel components
     private val detailNameField = JBTextField()
@@ -64,6 +66,7 @@ class MockApiToolWindowContent(private val project: Project) : Disposable {
         loadEndpoints()
         createDefaultEndpointsIfNeeded()
         updateServerStatus()
+        Disposer.register(this, logcatPanel)
         Disposer.register(project, this)
     }
 
@@ -73,9 +76,14 @@ class MockApiToolWindowContent(private val project: Project) : Disposable {
         // Top: Server control panel
         mainPanel.add(createServerControlPanel(), BorderLayout.NORTH)
 
-        // Center: Three-panel layout
+        // Center: Left panel (Logcat + Endpoints) + Right panel (Details + Log)
+        val leftSplitter = Splitter(true, 0.35f).apply {
+            firstComponent = createLogcatPanel()
+            secondComponent = createEndpointListPanel()
+        }
+
         val splitter = Splitter(false, 0.25f).apply {
-            firstComponent = createEndpointListPanel()
+            firstComponent = leftSplitter
 
             val rightSplitter = Splitter(false, 0.60f).apply {
                 firstComponent = createEndpointDetailPanel()
@@ -169,6 +177,10 @@ class MockApiToolWindowContent(private val project: Project) : Disposable {
         panel.add(JBScrollPane(endpointList), BorderLayout.CENTER)
 
         return panel
+    }
+
+    private fun createLogcatPanel(): JComponent {
+        return logcatPanel.component
     }
 
     private fun createEndpointDetailPanel(): JPanel {
