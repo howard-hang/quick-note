@@ -439,7 +439,7 @@ class QuickNoteToolWindowContent(private val project: Project) : Disposable {
                 )
                 thisLogger().debug("Search returned ${searchResults.size} results for query: '$query'")
                 searchResults
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 thisLogger().error("Search failed for query: '$query'", e)
                 emptyList()
             }

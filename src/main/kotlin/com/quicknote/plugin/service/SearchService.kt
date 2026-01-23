@@ -15,6 +15,7 @@ import org.apache.lucene.queryparser.classic.MultiFieldQueryParser
 import org.apache.lucene.search.*
 import org.apache.lucene.store.NIOFSDirectory
 import java.nio.file.Paths
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Project-level service for full-text search using Apache Lucene
@@ -27,6 +28,9 @@ class SearchService(private val project: Project) : Disposable {
     private val analyzer = StandardAnalyzer()
     @Volatile
     private var searchAvailable: Boolean = true
+    @Volatile
+    private var queryParserAvailable: Boolean = true
+    private val searchEnvironmentLogged = AtomicBoolean(false)
 
     companion object {
         fun getInstance(project: Project): SearchService {
@@ -56,11 +60,13 @@ class SearchService(private val project: Project) : Disposable {
             searcherManager = SearcherManager(indexWriter, null)
 
             thisLogger().info("Search index initialized at: $indexPath")
+            logSearchEnvironmentOnce()
         } catch (e: Throwable) {
             searchAvailable = false
             indexWriter = null
             searcherManager = null
             thisLogger().error("Failed to initialize search index; search disabled", e)
+            logSearchEnvironmentOnce()
         }
     }
 
@@ -195,10 +201,17 @@ class SearchService(private val project: Project) : Disposable {
         }
 
         if (!searchAvailable) {
+            thisLogger().warn("Search unavailable; using fallback search for query: '$queryString'")
             return fallbackSearch(queryString, maxResults, branchFilter, filePathFilter)
         }
 
-        val manager = searcherManager ?: return fallbackSearch(queryString, maxResults, branchFilter, filePathFilter)
+        logSearchEnvironmentOnce()
+
+        val manager = searcherManager
+            ?: run {
+                thisLogger().warn("Search manager not initialized; using fallback search for query: '$queryString'")
+                return fallbackSearch(queryString, maxResults, branchFilter, filePathFilter)
+            }
 
         val settings = QuickNoteSettings.getInstance()
         val fields = mutableListOf(
@@ -211,10 +224,23 @@ class SearchService(private val project: Project) : Disposable {
         if (settings.searchInFilePaths) {
             fields.add(NoteConstants.LUCENE_FIELD_FILE_PATH)
         }
-        val queryParser = MultiFieldQueryParser(
-            fields.toTypedArray(),
-            analyzer
-        )
+        if (!queryParserAvailable) {
+            thisLogger().warn("Lucene query parser unavailable; using fallback search for query: '$queryString'")
+            return fallbackSearch(queryString, maxResults, branchFilter, filePathFilter)
+        }
+
+        val queryParser = try {
+            MultiFieldQueryParser(
+                fields.toTypedArray(),
+                analyzer
+            )
+        } catch (e: Throwable) {
+            if (e is LinkageError) {
+                queryParserAvailable = false
+            }
+            thisLogger().error("Failed to initialize Lucene query parser; using fallback search", e)
+            return fallbackSearch(queryString, maxResults, branchFilter, filePathFilter)
+        }
 
         val parsedQuery = parseQuery(queryParser, queryString)
             ?: return fallbackSearch(queryString, maxResults, branchFilter, filePathFilter)
@@ -233,8 +259,16 @@ class SearchService(private val project: Project) : Disposable {
                 val noteId = doc.get(NoteConstants.LUCENE_FIELD_ID)
                 noteService.getNote(noteId)
             }.distinctBy { it.id }
-        } catch (e: Exception) {
-            thisLogger().error("Search failed for query: $queryString", e)
+        } catch (e: Throwable) {
+            if (e is LinkageError) {
+                searchAvailable = false
+                thisLogger().error(
+                    "Search failed due to incompatible Lucene classes; disabling full-text search",
+                    e
+                )
+            } else {
+                thisLogger().error("Search failed for query: $queryString", e)
+            }
             return fallbackSearch(queryString, maxResults, branchFilter, filePathFilter)
         } finally {
             manager.release(searcher)
@@ -377,7 +411,10 @@ class SearchService(private val project: Project) : Disposable {
     private fun parseQuery(queryParser: MultiFieldQueryParser, queryString: String): Query? {
         return try {
             queryParser.parse(queryString)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            if (e is LinkageError) {
+                queryParserAvailable = false
+            }
             thisLogger().warn("Failed to parse query: $queryString", e)
             val escaped = QueryParser.escape(queryString).trim()
             if (escaped.isBlank()) {
@@ -385,7 +422,10 @@ class SearchService(private val project: Project) : Disposable {
             } else {
                 try {
                     queryParser.parse(escaped)
-                } catch (fallbackError: Exception) {
+                } catch (fallbackError: Throwable) {
+                    if (fallbackError is LinkageError) {
+                        queryParserAvailable = false
+                    }
                     thisLogger().warn("Failed to parse escaped query: $escaped", fallbackError)
                     null
                 }
@@ -460,5 +500,43 @@ class SearchService(private val project: Project) : Disposable {
             builder.append(note.filePath).append('\n')
         }
         return builder.toString().lowercase()
+    }
+
+    private fun logSearchEnvironmentOnce() {
+        if (!searchEnvironmentLogged.compareAndSet(false, true)) {
+            return
+        }
+        val indexPath = runCatching { getIndexPath().toString() }.getOrNull() ?: "unknown"
+        val storageBasePath = runCatching { QuickNoteSettings.getInstance().storageBasePath }
+            .getOrNull()
+            ?: "unknown"
+        val luceneVersion = runCatching { org.apache.lucene.util.Version.LATEST.toString() }
+            .getOrNull()
+            ?: "unknown"
+        val coreLocation = classLocation(IndexWriter::class.java)
+        val analyzerLocation = classLocation(StandardAnalyzer::class.java)
+        val queryParserLocation = classLocation("org.apache.lucene.queryparser.classic.MultiFieldQueryParser")
+
+        thisLogger().info(
+            "Search environment: available=$searchAvailable, indexPath=$indexPath, " +
+                "storageBasePath=$storageBasePath, luceneVersion=$luceneVersion, " +
+                "coreJar=$coreLocation, analyzerJar=$analyzerLocation, queryParserJar=$queryParserLocation"
+        )
+    }
+
+    private fun classLocation(clazz: Class<*>): String {
+        return try {
+            clazz.protectionDomain?.codeSource?.location?.toString() ?: "unknown"
+        } catch (e: Throwable) {
+            "unknown"
+        }
+    }
+
+    private fun classLocation(className: String): String {
+        return try {
+            classLocation(Class.forName(className))
+        } catch (e: Throwable) {
+            "missing"
+        }
     }
 }

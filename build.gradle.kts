@@ -62,8 +62,8 @@ dependencies {
   implementation("org.commonmark:commonmark-ext-gfm-tables:0.22.0")
   implementation("org.commonmark:commonmark-ext-heading-anchor:0.22.0")
 
-  // Lucene query parsing; core/analysis come from the IDE-bundled Lucene.
-  implementation("org.apache.lucene:lucene-queryparser:9.11.1") {
+  // Lucene query parsing; rely on IDE-bundled Lucene at runtime to avoid version skew.
+  compileOnly("org.apache.lucene:lucene-queryparser:9.11.1") {
     exclude(group = "org.apache.lucene", module = "lucene-core")
   }
 
