@@ -4,6 +4,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.quicknote.plugin.model.Note
+import com.quicknote.plugin.model.NoteConstants
 import com.quicknote.plugin.repository.NoteRepository
 import java.util.UUID
 
@@ -32,18 +33,21 @@ class NoteService(private val project: Project) {
      */
     fun saveNote(note: Note): Result<Note> {
         return try {
+            val resolvedBranch = resolveGitBranch(note.gitBranch)
             // Generate UUID if not provided
             val noteWithId = if (note.id.isBlank()) {
                 note.copy(
                     id = UUID.randomUUID().toString(),
                     projectName = project.name,
                     createdAt = System.currentTimeMillis(),
-                    modifiedAt = System.currentTimeMillis()
+                    modifiedAt = System.currentTimeMillis(),
+                    gitBranch = resolvedBranch
                 )
             } else {
                 note.copy(
                     projectName = project.name,
-                    modifiedAt = System.currentTimeMillis()
+                    modifiedAt = System.currentTimeMillis(),
+                    gitBranch = resolvedBranch
                 )
             }
 
@@ -71,9 +75,11 @@ class NoteService(private val project: Project) {
      */
     fun updateNote(note: Note): Result<Note> {
         return try {
+            val resolvedBranch = resolveGitBranch(note.gitBranch)
             val updatedNote = note.copy(
                 projectName = project.name,
-                modifiedAt = System.currentTimeMillis()
+                modifiedAt = System.currentTimeMillis(),
+                gitBranch = resolvedBranch
             )
 
             repository.update(project.name, updatedNote)
@@ -184,5 +190,14 @@ class NoteService(private val project: Project) {
      */
     fun getPinnedNotes(): List<Note> {
         return getAllNotes().filter { it.isPinned() }
+    }
+
+    private fun resolveGitBranch(rawBranch: String?): String {
+        val normalized = rawBranch?.trim().orEmpty()
+        if (normalized.isNotBlank()) {
+            return normalized
+        }
+        val current = GitBranchService.getInstance(project).getCurrentBranch()
+        return current ?: NoteConstants.DEFAULT_GIT_BRANCH
     }
 }

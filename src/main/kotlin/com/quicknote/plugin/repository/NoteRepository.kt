@@ -184,6 +184,9 @@ class NoteRepository {
             put(NoteConstants.YAML_FIELD_TYPE, note.type.name)
             put(NoteConstants.YAML_FIELD_CREATED_AT, note.createdAt)
             put(NoteConstants.YAML_FIELD_MODIFIED_AT, note.modifiedAt)
+            note.gitBranch?.takeIf { it.isNotBlank() }?.let {
+                put(NoteConstants.YAML_FIELD_GIT_BRANCH, it)
+            }
 
             // Add metadata if not default
             if (note.metadata != NoteMetadata()) {
@@ -251,6 +254,9 @@ class NoteRepository {
             } else {
                 NoteMetadata()
             }
+            val gitBranch = (frontMatter[NoteConstants.YAML_FIELD_GIT_BRANCH] as? String)
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
 
             Note(
                 id = frontMatter[NoteConstants.YAML_FIELD_ID] as String,
@@ -262,6 +268,7 @@ class NoteRepository {
                 type = NoteType.valueOf(frontMatter[NoteConstants.YAML_FIELD_TYPE] as String),
                 createdAt = (frontMatter[NoteConstants.YAML_FIELD_CREATED_AT] as Number).toLong(),
                 modifiedAt = (frontMatter[NoteConstants.YAML_FIELD_MODIFIED_AT] as Number).toLong(),
+                gitBranch = gitBranch,
                 metadata = metadata
             )
         } catch (e: Exception) {

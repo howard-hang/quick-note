@@ -12,6 +12,7 @@ package com.quicknote.plugin.model
  * @property type Type of the note (NOTE or SNIPPET)
  * @property createdAt Creation timestamp in milliseconds
  * @property modifiedAt Last modification timestamp in milliseconds
+ * @property gitBranch Git branch name for this note
  * @property metadata Additional metadata
  */
 data class Note(
@@ -24,6 +25,7 @@ data class Note(
     val type: NoteType,
     val createdAt: Long,
     val modifiedAt: Long,
+    val gitBranch: String? = null,
     val metadata: NoteMetadata = NoteMetadata()
 ) {
     /**

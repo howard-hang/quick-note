@@ -9,6 +9,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.ValidationInfo
+import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.Disposer
@@ -24,6 +25,7 @@ import com.intellij.util.ui.FormBuilder
 import com.quicknote.plugin.model.Note
 import com.quicknote.plugin.model.NoteType
 import com.quicknote.plugin.settings.QuickNoteSettings
+import com.quicknote.plugin.service.GitBranchService
 import com.quicknote.plugin.service.NoteChangeListener
 import com.quicknote.plugin.service.NoteService
 import com.quicknote.plugin.service.SearchService
@@ -49,6 +51,8 @@ class QuickNoteToolWindowContent(private val project: Project) : Disposable {
     }
 
     private val searchField = JBTextField()
+    private val branchFilterCombo = ComboBox<String>()
+    private val branchFilterModel = DefaultComboBoxModel<String>()
     private val resetSearchButton = JButton(IconLoader.getIcon("/icons/clear.svg", QuickNoteToolWindowContent::class.java))
     private val noteListModel = DefaultListModel<Note>()
     private val noteList = JBList(noteListModel)
@@ -68,12 +72,16 @@ class QuickNoteToolWindowContent(private val project: Project) : Disposable {
     private var filePathFilter: String? = null
     private var searchTimer: java.util.Timer? = null
     private val searchSequence = AtomicInteger(0)
+    private val allBranchesLabel = "All branches"
+    private var currentBranchName: String? = null
+    private var isRefreshingBranchFilter = false
 
     val component: JComponent by lazy {
         createUI()
     }
 
     init {
+        initializeBranchFilter()
         setupListeners()
         loadNotesForCurrentFilter()
         rebuildSearchIndexIfNeeded()
@@ -89,20 +97,7 @@ class QuickNoteToolWindowContent(private val project: Project) : Disposable {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 val searchService = SearchService.getInstance(project)
-                val noteService = NoteService.getInstance(project)
-                val allNotes = noteService.getAllNotes()
-
-                thisLogger().info("Rebuilding search index for ${allNotes.size} notes")
-
-                allNotes.forEach { note ->
-                    try {
-                        searchService.indexNote(note)
-                    } catch (e: Exception) {
-                        thisLogger().warn("Failed to index note: ${note.id}", e)
-                    }
-                }
-
-                thisLogger().info("Search index rebuilt successfully")
+                searchService.rebuildIndex()
             } catch (e: Throwable) {
                 thisLogger().error("Failed to rebuild search index", e)
             }
@@ -138,7 +133,21 @@ class QuickNoteToolWindowContent(private val project: Project) : Disposable {
             override fun changedUpdate(e: DocumentEvent?) = scheduleSearch()
         })
 
-        panel.add(searchField, BorderLayout.CENTER)
+        val searchInputPanel = JPanel(GridBagLayout())
+        val gbc = GridBagConstraints().apply {
+            gridx = 0
+            gridy = 0
+            fill = GridBagConstraints.HORIZONTAL
+            weightx = 1.0
+            insets = JBUI.insets(0)
+        }
+        searchInputPanel.add(searchField, gbc)
+
+        gbc.gridy++
+        gbc.insets = JBUI.insetsTop(6)
+        searchInputPanel.add(branchFilterCombo, gbc)
+
+        panel.add(searchInputPanel, BorderLayout.CENTER)
         panel.add(createSearchActionsPanel(), BorderLayout.EAST)
         return panel
     }
@@ -183,7 +192,11 @@ class QuickNoteToolWindowContent(private val project: Project) : Disposable {
                 settings.storageBasePath = newPath
                 loadNotesForCurrentFilter()
                 if (settings.enableFullTextSearch) {
-                    SearchService.getInstance(project).resetIndex()
+                    val searchService = SearchService.getInstance(project)
+                    searchService.resetIndex()
+                    ApplicationManager.getApplication().executeOnPooledThread {
+                        searchService.rebuildIndex()
+                    }
                 }
             }
         }
@@ -288,6 +301,101 @@ class QuickNoteToolWindowContent(private val project: Project) : Disposable {
         )
     }
 
+    private fun initializeBranchFilter() {
+        branchFilterCombo.isEditable = false
+        branchFilterCombo.toolTipText = "Search scope by branch"
+        branchFilterCombo.model = branchFilterModel
+        branchFilterCombo.setPrototypeDisplayValue("Current branch (feature/long-name)")
+
+        refreshBranchFilterOptions()
+
+        branchFilterCombo.addActionListener {
+            if (isRefreshingBranchFilter) {
+                return@addActionListener
+            }
+            performSearch()
+        }
+    }
+
+    private fun refreshBranchFilterOptions(allNotes: List<Note>? = null) {
+        val previousSelection = branchFilterCombo.selectedItem as? String
+        val previousIndex = branchFilterCombo.selectedIndex
+
+        val currentBranch = GitBranchService.getInstance(project).getCurrentBranch()
+        currentBranchName = currentBranch
+        val branchList = (allNotes ?: NoteService.getInstance(project).getAllNotes())
+            .mapNotNull { it.gitBranch?.trim()?.takeIf { branch -> branch.isNotBlank() } }
+            .toSet()
+            .sorted()
+
+        val currentLabel = buildCurrentBranchLabel(currentBranch)
+
+        isRefreshingBranchFilter = true
+        try {
+            branchFilterModel.removeAllElements()
+            branchFilterModel.addElement(currentLabel)
+            branchFilterModel.addElement(allBranchesLabel)
+            branchList.filterNot { it == currentBranch }.forEach { branchFilterModel.addElement(it) }
+
+            val targetIndex = when {
+                previousIndex == 0 -> 0
+                previousSelection != null -> {
+                    val index = branchFilterModel.getIndexOf(previousSelection)
+                    if (index >= 0) index else 0
+                }
+                else -> 0
+            }
+            branchFilterCombo.selectedIndex = targetIndex
+        } finally {
+            isRefreshingBranchFilter = false
+        }
+    }
+
+    private fun refreshCurrentBranchLabel() {
+        val currentBranch = GitBranchService.getInstance(project).getCurrentBranch()
+        if (currentBranchName == currentBranch) {
+            return
+        }
+        currentBranchName = currentBranch
+        val currentLabel = buildCurrentBranchLabel(currentBranch)
+        if (branchFilterModel.size <= 0) {
+            return
+        }
+        val selectedIndex = branchFilterCombo.selectedIndex
+        isRefreshingBranchFilter = true
+        try {
+            branchFilterModel.removeElementAt(0)
+            branchFilterModel.insertElementAt(currentLabel, 0)
+            if (selectedIndex >= 0) {
+                branchFilterCombo.selectedIndex = selectedIndex
+            }
+        } finally {
+            isRefreshingBranchFilter = false
+        }
+    }
+
+    private fun buildCurrentBranchLabel(currentBranch: String?): String {
+        return if (currentBranch.isNullOrBlank()) {
+            "Current branch (unavailable)"
+        } else {
+            "Current branch ($currentBranch)"
+        }
+    }
+
+    private fun resolveBranchFilter(): String? {
+        return when (branchFilterCombo.selectedIndex) {
+            0 -> GitBranchService.getInstance(project).getCurrentBranch()
+            1 -> null
+            -1 -> GitBranchService.getInstance(project).getCurrentBranch()
+            else -> (branchFilterCombo.selectedItem as? String)?.trim()?.takeIf { it.isNotBlank() }
+        }
+    }
+
+    private fun applyBranchFilter(notes: List<Note>, branchFilter: String?): List<Note> {
+        val normalized = branchFilter?.trim()?.takeIf { it.isNotBlank() } ?: return notes
+        return notes.filter { it.gitBranch == normalized }
+    }
+
     private fun scheduleSearch() {
         searchTimer?.cancel()
         val debounceMs = QuickNoteSettings.getInstance().searchDebounceMs
@@ -302,6 +410,8 @@ class QuickNoteToolWindowContent(private val project: Project) : Disposable {
         val query = searchField.text.trim()
         val sequence = searchSequence.incrementAndGet()
         val currentFileFilter = filePathFilter
+        refreshCurrentBranchLabel()
+        val branchFilter = resolveBranchFilter()
 
         thisLogger().debug("Performing search with query: '$query'")
 
@@ -312,45 +422,55 @@ class QuickNoteToolWindowContent(private val project: Project) : Disposable {
                 } else {
                     NoteService.getInstance(project).findNotesByFilePath(currentFileFilter)
                 }
-                thisLogger().debug("Query is blank, showing ${notes.size} notes")
-                applySearchResults(sequence, query, notes, null)
+                val filteredNotes = applyBranchFilter(notes, branchFilter)
+                thisLogger().debug("Query is blank, showing ${filteredNotes.size} notes")
+                applySearchResults(sequence, query, filteredNotes, null)
                 return@executeOnPooledThread
             }
 
             val searchService = SearchService.getInstance(project)
-            if (!searchService.isSearchAvailable()) {
-                applySearchResults(sequence, query, emptyList(), "Search unavailable")
-                return@executeOnPooledThread
-            }
-
             val maxResults = maxOf(1, QuickNoteSettings.getInstance().resultsPerPage)
             val notes = try {
-                val searchResults = searchService.search(query, maxResults)
+                val searchResults = searchService.search(
+                    query,
+                    maxResults,
+                    branchFilter,
+                    currentFileFilter
+                )
                 thisLogger().debug("Search returned ${searchResults.size} results for query: '$query'")
                 searchResults
             } catch (e: Exception) {
                 thisLogger().error("Search failed for query: '$query'", e)
                 emptyList()
             }
-            val filteredNotes = if (currentFileFilter.isNullOrBlank()) {
-                notes
-            } else {
-                notes.filter { it.filePath == currentFileFilter }
-            }
+            val filteredNotes = applyBranchFilter(
+                if (currentFileFilter.isNullOrBlank()) {
+                    notes
+                } else {
+                    notes.filter { it.filePath == currentFileFilter }
+                },
+                branchFilter
+            )
             applySearchResults(sequence, query, filteredNotes, "No notes found")
         }
     }
 
     private fun loadNotesForCurrentFilter() {
+        val allNotes = NoteService.getInstance(project).getAllNotes()
+        refreshBranchFilterOptions(allNotes)
+        refreshCurrentBranchLabel()
+
         val notes = if (filePathFilter.isNullOrBlank()) {
-            NoteService.getInstance(project).getAllNotes()
+            allNotes
         } else {
             NoteService.getInstance(project).findNotesByFilePath(filePathFilter!!)
         }
+        val branchFilter = resolveBranchFilter()
+        val filteredNotes = applyBranchFilter(notes, branchFilter)
         thisLogger().debug(
-            "Loaded ${notes.size} notes (filePathFilter=${filePathFilter ?: "none"})"
+            "Loaded ${filteredNotes.size} notes (filePathFilter=${filePathFilter ?: "none"})"
         )
-        updateNoteList(notes)
+        updateNoteList(filteredNotes)
     }
 
     fun showNotesForFile(filePath: String) {

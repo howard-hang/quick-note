@@ -2,7 +2,7 @@
 
 <!-- Plugin description -->
 Quick Note is a JetBrains IDE plugin for fast note capture and a built-in Mock API server (JDK HttpServer).
-It supports Markdown notes with YAML front matter, full-text search, tagging, and a Postman-style UI
+It supports Markdown notes with YAML front matter, Git-branch scoped notes, full-text search, tagging, and a Postman-style UI
 for managing mock endpoints and serving responses locally.
 It also includes a Logcat recorder tool window to capture Android adb logcat logs with one-click controls.
 <!-- Plugin description end -->
@@ -15,6 +15,7 @@ Quick Note 是一个功能强大的 IntelliJ 平台插件，提供便捷的笔�
 - 在编辑器中快速创建笔记和代码片段
 - Markdown 格式支持，带 YAML Front Matter
 - 全文搜索（基于 Apache Lucene）
+- Git 分支维度筛选与搜索（可切换当前分支/全部分支）
 - 标签管理和文件关联
 - 笔记列表浏览和过滤
 

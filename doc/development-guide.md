@@ -884,3 +884,9 @@ curl http://localhost:8888/images/avatar.png --output avatar.png
 - 默认路径：`~/quick-log/`
 - 命名规范：`<Project>-<Branch>-<Timestamp>.log`
 
+
+# Quick Note - 分支支持
+
+- Note 模型新增 `gitBranch` 字段，并序列化到 YAML Front Matter。
+- 搜索索引新增分支与精确文件路径字段，分支/文件过滤直接进入 Lucene 查询。
+- 搜索栏支持分支范围：当前分支、全部分支、指定分支。

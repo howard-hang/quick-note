@@ -10,6 +10,7 @@ import com.quicknote.plugin.settings.QuickNoteSettings
 import org.apache.lucene.analysis.standard.StandardAnalyzer
 import org.apache.lucene.document.*
 import org.apache.lucene.index.*
+import org.apache.lucene.queryparser.classic.QueryParser
 import org.apache.lucene.queryparser.classic.MultiFieldQueryParser
 import org.apache.lucene.search.*
 import org.apache.lucene.store.NIOFSDirectory
@@ -112,6 +113,10 @@ class SearchService(private val project: Project) : Disposable {
                 add(TextField(NoteConstants.LUCENE_FIELD_TAGS, note.tags.joinToString(" "), Field.Store.YES))
                 add(TextField(NoteConstants.LUCENE_FIELD_FILE_PATH, note.filePath, Field.Store.NO))
                 add(StoredField(NoteConstants.LUCENE_FIELD_FILE_PATH, note.filePath))
+                add(StringField(NoteConstants.LUCENE_FIELD_FILE_PATH_EXACT, note.filePath, Field.Store.NO))
+                note.gitBranch?.takeIf { it.isNotBlank() }?.let { branch ->
+                    add(StringField(NoteConstants.LUCENE_FIELD_GIT_BRANCH, branch, Field.Store.YES))
+                }
             }
 
             writer.updateDocument(Term(NoteConstants.LUCENE_FIELD_ID, note.id), doc)
@@ -179,45 +184,47 @@ class SearchService(private val project: Project) : Disposable {
      * @param maxResults Maximum number of results to return
      * @return List of matching notes
      */
-    fun search(queryString: String, maxResults: Int = NoteConstants.MAX_SEARCH_RESULTS): List<Note> {
-        if (!searchAvailable) {
-            return emptyList()
-        }
+    fun search(
+        queryString: String,
+        maxResults: Int = NoteConstants.MAX_SEARCH_RESULTS,
+        branchFilter: String? = null,
+        filePathFilter: String? = null
+    ): List<Note> {
         if (queryString.isBlank()) {
             return emptyList()
         }
 
-        val manager = searcherManager ?: return emptyList()
+        if (!searchAvailable) {
+            return fallbackSearch(queryString, maxResults, branchFilter, filePathFilter)
+        }
+
+        val manager = searcherManager ?: return fallbackSearch(queryString, maxResults, branchFilter, filePathFilter)
+
+        val settings = QuickNoteSettings.getInstance()
+        val fields = mutableListOf(
+            NoteConstants.LUCENE_FIELD_TITLE,
+            NoteConstants.LUCENE_FIELD_CONTENT
+        )
+        if (settings.searchInTags) {
+            fields.add(NoteConstants.LUCENE_FIELD_TAGS)
+        }
+        if (settings.searchInFilePaths) {
+            fields.add(NoteConstants.LUCENE_FIELD_FILE_PATH)
+        }
+        val queryParser = MultiFieldQueryParser(
+            fields.toTypedArray(),
+            analyzer
+        )
+
+        val parsedQuery = parseQuery(queryParser, queryString)
+            ?: return fallbackSearch(queryString, maxResults, branchFilter, filePathFilter)
+
+        val filteredQuery = applyFilters(parsedQuery, branchFilter, filePathFilter)
         val searcher = manager.acquire()
 
         try {
-            val settings = QuickNoteSettings.getInstance()
-            val fields = mutableListOf(
-                NoteConstants.LUCENE_FIELD_TITLE,
-                NoteConstants.LUCENE_FIELD_CONTENT
-            )
-            if (settings.searchInTags) {
-                fields.add(NoteConstants.LUCENE_FIELD_TAGS)
-            }
-            if (settings.searchInFilePaths) {
-                fields.add(NoteConstants.LUCENE_FIELD_FILE_PATH)
-            }
-            // Build multi-field query
-            val queryParser = MultiFieldQueryParser(
-                fields.toTypedArray(),
-                analyzer
-            )
-
-            val query = try {
-                queryParser.parse(queryString)
-            } catch (e: Exception) {
-                thisLogger().warn("Failed to parse query: $queryString", e)
-                // Fallback to simple query
-                queryParser.parse(queryString.replace(Regex("[^\\w\\s]"), ""))
-            }
-
             // Execute search
-            val topDocs = searcher.search(query, maxResults)
+            val topDocs = searcher.search(filteredQuery, maxResults)
 
             // Convert results to notes
             val noteService = NoteService.getInstance(project)
@@ -228,7 +235,7 @@ class SearchService(private val project: Project) : Disposable {
             }.distinctBy { it.id }
         } catch (e: Exception) {
             thisLogger().error("Search failed for query: $queryString", e)
-            return emptyList()
+            return fallbackSearch(queryString, maxResults, branchFilter, filePathFilter)
         } finally {
             manager.release(searcher)
         }
@@ -365,5 +372,93 @@ class SearchService(private val project: Project) : Disposable {
 
         val docMethod = searcherClass.getMethod("doc", Int::class.javaPrimitiveType)
         return docMethod.invoke(searcher, docId) as Document
+    }
+
+    private fun parseQuery(queryParser: MultiFieldQueryParser, queryString: String): Query? {
+        return try {
+            queryParser.parse(queryString)
+        } catch (e: Exception) {
+            thisLogger().warn("Failed to parse query: $queryString", e)
+            val escaped = QueryParser.escape(queryString).trim()
+            if (escaped.isBlank()) {
+                null
+            } else {
+                try {
+                    queryParser.parse(escaped)
+                } catch (fallbackError: Exception) {
+                    thisLogger().warn("Failed to parse escaped query: $escaped", fallbackError)
+                    null
+                }
+            }
+        }
+    }
+
+    private fun applyFilters(baseQuery: Query, branchFilter: String?, filePathFilter: String?): Query {
+        val normalizedBranch = branchFilter?.trim()?.takeIf { it.isNotBlank() }
+        val normalizedPath = filePathFilter?.trim()?.takeIf { it.isNotBlank() }
+        if (normalizedBranch == null && normalizedPath == null) {
+            return baseQuery
+        }
+
+        val builder = BooleanQuery.Builder()
+        builder.add(baseQuery, BooleanClause.Occur.MUST)
+        normalizedBranch?.let {
+            builder.add(TermQuery(Term(NoteConstants.LUCENE_FIELD_GIT_BRANCH, it)), BooleanClause.Occur.FILTER)
+        }
+        normalizedPath?.let {
+            builder.add(TermQuery(Term(NoteConstants.LUCENE_FIELD_FILE_PATH_EXACT, it)), BooleanClause.Occur.FILTER)
+        }
+        return builder.build()
+    }
+
+    private fun fallbackSearch(
+        queryString: String,
+        maxResults: Int,
+        branchFilter: String?,
+        filePathFilter: String?
+    ): List<Note> {
+        if (queryString.isBlank()) {
+            return emptyList()
+        }
+        val tokens = queryString.lowercase()
+            .split(Regex("\\s+"))
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+        if (tokens.isEmpty()) {
+            return emptyList()
+        }
+        val settings = QuickNoteSettings.getInstance()
+        val normalizedBranch = branchFilter?.trim()?.takeIf { it.isNotBlank() }
+        val normalizedPath = filePathFilter?.trim()?.takeIf { it.isNotBlank() }
+
+        val noteService = NoteService.getInstance(project)
+        return noteService.getAllNotes()
+            .asSequence()
+            .filter { note ->
+                if (normalizedBranch != null && note.gitBranch != normalizedBranch) {
+                    return@filter false
+                }
+                if (normalizedPath != null && note.filePath != normalizedPath) {
+                    return@filter false
+                }
+                val haystack = buildSearchableText(note, settings)
+                tokens.any { haystack.contains(it) }
+            }
+            .take(maxResults)
+            .toList()
+    }
+
+    private fun buildSearchableText(note: Note, settings: QuickNoteSettings): String {
+        val builder = StringBuilder()
+        builder.append(note.title).append('\n')
+        builder.append(note.content).append('\n')
+        note.metadata.snippet?.let { builder.append(it).append('\n') }
+        if (settings.searchInTags) {
+            builder.append(note.tags.joinToString(" ")).append('\n')
+        }
+        if (settings.searchInFilePaths) {
+            builder.append(note.filePath).append('\n')
+        }
+        return builder.toString().lowercase()
     }
 }

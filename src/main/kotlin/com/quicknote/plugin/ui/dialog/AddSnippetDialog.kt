@@ -1,5 +1,6 @@
 package com.quicknote.plugin.ui.dialog
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
@@ -11,10 +12,12 @@ import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
 import com.quicknote.plugin.model.Note
+import com.quicknote.plugin.model.NoteConstants
 import com.quicknote.plugin.model.NoteMetadata
 import com.quicknote.plugin.model.NoteType
 import com.quicknote.plugin.settings.QuickNoteSettings
 import com.quicknote.plugin.service.FileService
+import com.quicknote.plugin.service.GitBranchService
 import com.quicknote.plugin.service.NoteService
 import com.quicknote.plugin.service.SearchService
 import com.quicknote.plugin.ui.dialog.CommonTagsDialog
@@ -27,6 +30,7 @@ import javax.swing.JComponent
 import javax.swing.JButton
 import javax.swing.JPanel
 import javax.swing.JScrollPane
+import javax.swing.SwingUtilities
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 
@@ -45,11 +49,14 @@ class AddSnippetDialog(
     private val codePreview = JBTextArea(10, 40)
     private val notesArea = JBTextArea(5, 40)
     private val tagsField = JBTextField(40)
+    private val branchField = JBTextField(40)
     private val filePathField = JBTextField(40)
     private val commonTagsPanel = JPanel(FlowLayout(FlowLayout.LEFT, 8, 0))
     private val commonTagCheckboxes = mutableListOf<JBCheckBox>()
     private val commonTagsRow = JPanel(BorderLayout(8, 0))
+    private val branchRow = JPanel(BorderLayout(6, 0))
     private val editCommonTagsButton = JButton("Edit")
+    private val useCurrentBranchButton = JButton("Use Current")
     private var isSyncingTags = false
 
     private val language = FileService.getInstance().detectLanguage(file)
@@ -89,6 +96,15 @@ class AddSnippetDialog(
             override fun removeUpdate(e: DocumentEvent?) = updateCommonTagSelection()
             override fun changedUpdate(e: DocumentEvent?) = updateCommonTagSelection()
         })
+
+        branchField.text = NoteConstants.DEFAULT_GIT_BRANCH
+        branchField.emptyText.text = "Current branch: resolving..."
+        updateBranchFromCurrent(forceRefresh = false)
+        useCurrentBranchButton.addActionListener {
+            updateBranchFromCurrent(forceRefresh = true)
+        }
+        branchRow.add(branchField, BorderLayout.CENTER)
+        branchRow.add(useCurrentBranchButton, BorderLayout.EAST)
     }
 
     override fun createCenterPanel(): JComponent {
@@ -161,6 +177,18 @@ class AddSnippetDialog(
         gbc.weightx = 1.0
         panel.add(commonTagsRow, gbc)
 
+        // Git branch
+        gbc.gridx = 0
+        gbc.gridy++
+        gbc.fill = GridBagConstraints.NONE
+        gbc.weightx = 0.0
+        panel.add(JBLabel("Git Branch:"), gbc)
+
+        gbc.gridx = 1
+        gbc.fill = GridBagConstraints.HORIZONTAL
+        gbc.weightx = 1.0
+        panel.add(branchRow, gbc)
+
         // File path
         gbc.gridx = 0
         gbc.gridy++
@@ -191,6 +219,11 @@ class AddSnippetDialog(
         }
 
         val tags = parseTags(tagsField.text)
+        val gitBranch = branchField.text.trim()
+        if (gitBranch.isBlank()) {
+            Messages.showErrorDialog(project, "Git branch is required", "Validation Error")
+            return  // Don't close dialog, let user fix the error
+        }
 
         // Create note with metadata
         val note = Note(
@@ -203,6 +236,7 @@ class AddSnippetDialog(
             type = NoteType.SNIPPET,
             createdAt = 0,
             modifiedAt = 0,
+            gitBranch = gitBranch,
             metadata = NoteMetadata(
                 language = language,
                 startLine = startLine,
@@ -306,5 +340,20 @@ class AddSnippetDialog(
         return raw.split(',')
             .map { it.trim() }
             .filter { it.isNotEmpty() }
+    }
+
+    private fun updateBranchFromCurrent(forceRefresh: Boolean) {
+        useCurrentBranchButton.isEnabled = false
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val branch = GitBranchService.getInstance(project).getCurrentBranchOrDefault(forceRefresh)
+            SwingUtilities.invokeLater {
+                val currentText = branchField.text.trim()
+                if (forceRefresh || currentText.isBlank() || currentText == NoteConstants.DEFAULT_GIT_BRANCH) {
+                    branchField.text = branch
+                }
+                branchField.emptyText.text = "Current branch: $branch"
+                useCurrentBranchButton.isEnabled = true
+            }
+        }
     }
 }

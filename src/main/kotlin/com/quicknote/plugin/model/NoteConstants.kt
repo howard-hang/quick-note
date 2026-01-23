@@ -18,6 +18,7 @@ object NoteConstants {
     const val YAML_FIELD_TYPE = "type"
     const val YAML_FIELD_CREATED_AT = "createdAt"
     const val YAML_FIELD_MODIFIED_AT = "modifiedAt"
+    const val YAML_FIELD_GIT_BRANCH = "gitBranch"
     const val YAML_FIELD_METADATA = "metadata"
 
     // Metadata field names
@@ -34,6 +35,8 @@ object NoteConstants {
     const val LUCENE_FIELD_CONTENT = "content"
     const val LUCENE_FIELD_TAGS = "tags"
     const val LUCENE_FIELD_FILE_PATH = "filePath"
+    const val LUCENE_FIELD_FILE_PATH_EXACT = "filePathExact"
+    const val LUCENE_FIELD_GIT_BRANCH = "gitBranch"
 
     // UI constants
     const val TOOL_WINDOW_ID = "Quick Notes"
@@ -42,6 +45,8 @@ object NoteConstants {
 
     // Search constants
     const val SEARCH_DEBOUNCE_MS = 300L
+
+    const val DEFAULT_GIT_BRANCH = "no-branch"
 
     // Time format
     const val TIME_FORMAT_FULL = "MMM dd, yyyy HH:mm"
