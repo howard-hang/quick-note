@@ -7,11 +7,10 @@ import com.intellij.openapi.project.Project
 import com.quicknote.plugin.model.Note
 import com.quicknote.plugin.model.NoteConstants
 import com.quicknote.plugin.settings.QuickNoteSettings
+import org.apache.lucene.analysis.Analyzer
 import org.apache.lucene.analysis.standard.StandardAnalyzer
 import org.apache.lucene.document.*
 import org.apache.lucene.index.*
-import org.apache.lucene.queryparser.classic.QueryParser
-import org.apache.lucene.queryparser.classic.MultiFieldQueryParser
 import org.apache.lucene.search.*
 import org.apache.lucene.store.NIOFSDirectory
 import java.nio.file.Paths
@@ -224,23 +223,8 @@ class SearchService(private val project: Project) : Disposable {
         if (settings.searchInFilePaths) {
             fields.add(NoteConstants.LUCENE_FIELD_FILE_PATH)
         }
-        if (!queryParserAvailable) {
-            thisLogger().warn("Lucene query parser unavailable; using fallback search for query: '$queryString'")
-            return fallbackSearch(queryString, maxResults, branchFilter, filePathFilter)
-        }
-
-        val queryParser = try {
-            MultiFieldQueryParser(
-                fields.toTypedArray(),
-                analyzer
-            )
-        } catch (e: Throwable) {
-            if (e is LinkageError) {
-                queryParserAvailable = false
-            }
-            thisLogger().error("Failed to initialize Lucene query parser; using fallback search", e)
-            return fallbackSearch(queryString, maxResults, branchFilter, filePathFilter)
-        }
+        val queryParser = createQueryParser(fields.toTypedArray())
+            ?: return fallbackSearch(queryString, maxResults, branchFilter, filePathFilter)
 
         val parsedQuery = parseQuery(queryParser, queryString)
             ?: return fallbackSearch(queryString, maxResults, branchFilter, filePathFilter)
@@ -408,22 +392,49 @@ class SearchService(private val project: Project) : Disposable {
         return docMethod.invoke(searcher, docId) as Document
     }
 
-    private fun parseQuery(queryParser: MultiFieldQueryParser, queryString: String): Query? {
+    private fun createQueryParser(fields: Array<String>): Any? {
+        if (!queryParserAvailable) {
+            thisLogger().warn("Lucene query parser unavailable; using fallback search")
+            return null
+        }
         return try {
-            queryParser.parse(queryString)
+            val parserClass = Class.forName("org.apache.lucene.queryparser.classic.MultiFieldQueryParser")
+            val constructor = parserClass.getConstructor(Array<String>::class.java, Analyzer::class.java)
+            constructor.newInstance(fields, analyzer)
         } catch (e: Throwable) {
-            if (e is LinkageError) {
+            if (isQueryParserMissing(e)) {
+                queryParserAvailable = false
+            }
+            thisLogger().error("Failed to initialize Lucene query parser; using fallback search", e)
+            null
+        }
+    }
+
+    private fun parseQuery(queryParser: Any, queryString: String): Query? {
+        val parseMethod = try {
+            queryParser.javaClass.getMethod("parse", String::class.java)
+        } catch (e: Throwable) {
+            if (isQueryParserMissing(e)) {
+                queryParserAvailable = false
+            }
+            thisLogger().warn("Lucene query parser method not available; using fallback search", e)
+            return null
+        }
+        return try {
+            parseMethod.invoke(queryParser, queryString) as? Query
+        } catch (e: Throwable) {
+            if (isQueryParserMissing(e)) {
                 queryParserAvailable = false
             }
             thisLogger().warn("Failed to parse query: $queryString", e)
-            val escaped = QueryParser.escape(queryString).trim()
+            val escaped = escapeQuery(queryString).trim()
             if (escaped.isBlank()) {
                 null
             } else {
                 try {
-                    queryParser.parse(escaped)
+                    parseMethod.invoke(queryParser, escaped) as? Query
                 } catch (fallbackError: Throwable) {
-                    if (fallbackError is LinkageError) {
+                    if (isQueryParserMissing(fallbackError)) {
                         queryParserAvailable = false
                     }
                     thisLogger().warn("Failed to parse escaped query: $escaped", fallbackError)
@@ -431,6 +442,31 @@ class SearchService(private val project: Project) : Disposable {
                 }
             }
         }
+    }
+
+    private fun escapeQuery(raw: String): String {
+        return try {
+            val parserClass = Class.forName("org.apache.lucene.queryparser.classic.QueryParser")
+            val escapeMethod = parserClass.getMethod("escape", String::class.java)
+            (escapeMethod.invoke(null, raw) as? String) ?: raw
+        } catch (e: Throwable) {
+            raw.replace(Regex("([+\\-!(){}\\[\\]^\"~*?:\\\\/])"), "\\\\$1")
+        }
+    }
+
+    private fun isQueryParserMissing(error: Throwable): Boolean {
+        var current: Throwable? = error
+        while (current != null) {
+            if (current is ClassNotFoundException ||
+                current is NoClassDefFoundError ||
+                current is LinkageError ||
+                current is NoSuchMethodException
+            ) {
+                return true
+            }
+            current = current.cause
+        }
+        return false
     }
 
     private fun applyFilters(baseQuery: Query, branchFilter: String?, filePathFilter: String?): Query {
