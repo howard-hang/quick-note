@@ -88,17 +88,5 @@
             description="Add a quick note or snippet depending on selection">
       <keyboard-shortcut keymap="$default" first-keystroke="ctrl Q"/>
     </action>
-
-    <action
-            id="com.quicknote.plugin.ShowNotesForFile"
-            class="com.quicknote.plugin.action.ShowNotesForFileAction"
-            text="Show Notes for File"
-            icon="icons/list.svg"
-            description="Show notes for this file">
-      <add-to-group
-              group-id="EditorPopupMenu"
-              anchor="after"
-              relative-to-action="com.quicknote.plugin.AddQuickNote"/>
-    </action>
   </actions>
 </idea-plugin>

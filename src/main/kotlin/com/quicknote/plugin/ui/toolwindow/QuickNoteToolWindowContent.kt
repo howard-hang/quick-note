@@ -34,6 +34,8 @@ import com.quicknote.plugin.util.MarkdownUtils
 import com.quicknote.plugin.util.PathUtils
 import com.quicknote.plugin.util.TimeFormatter
 import java.awt.*
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import javax.swing.*
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
@@ -217,6 +219,24 @@ class QuickNoteToolWindowContent(private val project: Project) : Disposable {
                 showEmptyState("Select a note to view details")
             }
         }
+
+        noteList.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                if (e.clickCount != 2 || !SwingUtilities.isLeftMouseButton(e)) {
+                    return
+                }
+                val index = noteList.locationToIndex(e.point)
+                if (index < 0) {
+                    return
+                }
+                val bounds = noteList.getCellBounds(index, index)
+                if (bounds == null || !bounds.contains(e.point)) {
+                    return
+                }
+                noteList.selectedIndex = index
+                openNoteFile(noteList.model.getElementAt(index))
+            }
+        })
 
         return JBScrollPane(noteList)
     }
